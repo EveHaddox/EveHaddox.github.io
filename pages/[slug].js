@@ -1,13 +1,21 @@
 // pages/[slug].js
 
-import { useRouter } from 'next/router';
 import Link from 'next/link';
 import { projects } from '../projects/projectsData';
+import { Star, StarHalf, StarOff } from 'lucide-react';
 
-export default function ProjectDetail({ proj, purchases, reviewsCount }) {
+export default function ProjectDetail({
+  proj,
+  purchases,
+  reviewsCount,
+  ratingAvg,
+  featuredHtml,
+  featuredAuthor
+}) {
   return (
     <div className="min-h-screen bg-background text-text">
       <div className="max-w-4xl mx-auto p-6 space-y-6">
+        {/* Back link */}
         <Link href="/" className="inline-block text-primary hover:underline">
           ← Back to Portfolio
         </Link>
@@ -20,35 +28,28 @@ export default function ProjectDetail({ proj, purchases, reviewsCount }) {
           </p>
         </header>
 
-        {/* GmodStore Actions */}
+        {/* Rating & Purchases */}
         <div className="flex flex-wrap items-center space-x-6">
-          <a
-            href={proj.gmodstoreUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-primary text-text py-2 px-4 rounded-sm hover:opacity-90 transition-opacity"
-          >
-            View on GmodStore
-          </a>
+          {/* Star Rating */}
+          <div className="flex items-center space-x-1">
+            {Array.from({ length: 5 }).map((_, i) => {
+              const idx = i + 1;
+              if (ratingAvg >= idx) {
+                return <Star key={i} className="w-5 h-5 text-gold" />;
+              }
+              if (ratingAvg >= idx - 0.5) {
+                return <StarHalf key={i} className="w-5 h-5 text-gold" />;
+              }
+              return <StarOff key={i} className="w-5 h-5 text-disabled" />;
+            })}
+            <span className="text-muted text-sm">({reviewsCount} reviews)</span>
+          </div>
 
-          {/* Reviews Count */}
-          <span className="flex items-center space-x-1 text-primary">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.97a1 1 0 00.95.69h4.18c.969 0 1.371 1.24.588 1.81l-3.39 2.463a1 1 0 00-.364 1.118l1.287 3.97c.3.921-.755 1.688-1.54 1.118l-3.39-2.462a1 1 0 00-1.175 0l-3.39 2.462c-.785.57-1.84-.197-1.54-1.118l1.287-3.97a1 1 0 00-.364-1.118L2.045 9.397c-.783-.57-.38-1.81.588-1.81h4.18a1 1 0 00.95-.69l1.286-3.97z" />
-            </svg>
-            <span>{reviewsCount} Reviews</span>
-          </span>
-
-          {/* Purchase Count */}
+          {/* Purchases */}
           <span className="flex items-center space-x-1 text-muted">
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="h-5 w-5"
+              className="w-5 h-5"
               viewBox="0 0 20 20"
               fill="currentColor"
             >
@@ -58,8 +59,36 @@ export default function ProjectDetail({ proj, purchases, reviewsCount }) {
                 clipRule="evenodd"
               />
             </svg>
-            <span>{purchases} Purchases</span>
+            <span>{purchases} purchases</span>
           </span>
+        </div>
+
+        {/* Featured Review */}
+        {featuredHtml && (
+          <section className="bg-header rounded-md p-4 space-y-2">
+            <h2 className="text-xl font-semibold text-primary">
+              Featured Review
+            </h2>
+            <div
+              className="prose prose-invert"
+              dangerouslySetInnerHTML={{ __html: featuredHtml }}
+            />
+            {featuredAuthor && (
+              <p className="text-muted text-sm">— {featuredAuthor}</p>
+            )}
+          </section>
+        )}
+
+        {/* GmodStore Button */}
+        <div>
+          <a
+            href={proj.gmodstoreUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="bg-primary text-text py-2 px-4 rounded-sm hover:opacity-90 transition-opacity"
+          >
+            View on GmodStore
+          </a>
         </div>
 
         {/* Screenshots */}
@@ -74,7 +103,7 @@ export default function ProjectDetail({ proj, purchases, reviewsCount }) {
           ))}
         </div>
 
-        {/* Reviews Link */}
+        {/* All Reviews Link */}
         <div className="pt-6 border-t border-header">
           <a
             href={`${proj.gmodstoreUrl}#reviews`}
@@ -90,7 +119,6 @@ export default function ProjectDetail({ proj, purchases, reviewsCount }) {
   );
 }
 
-// Generate paths for each project
 export async function getStaticPaths() {
   return {
     paths: projects.map((p) => ({ params: { slug: p.slug } })),
@@ -98,33 +126,43 @@ export async function getStaticPaths() {
   };
 }
 
-// Fetch GmodStore data at build time
 export async function getStaticProps({ params }) {
   const proj = projects.find((p) => p.slug === params.slug);
-  if (!proj) {
-    return { notFound: true };
-  }
+  if (!proj) return { notFound: true };
 
-  // Server‐side require for Cheerio
   const cheerio = require('cheerio');
-
   const response = await fetch(proj.gmodstoreUrl);
   const html = await response.text();
   const $ = cheerio.load(html);
 
-  // Purchases: look for text starting 'Purchases:'
+  // Purchases
   let purchases = $('*')
-    .filter((i, el) => $(el).text().trim().startsWith('Purchases:'))
+    .filter((i, el) =>
+      $(el)
+        .text()
+        .trim()
+        .startsWith('Purchases:')
+    )
     .text()
     .replace('Purchases:', '')
     .trim();
 
-  // Reviews count from link like 'Reviews (56)'
-  const reviewsText = $('a[href*="#reviews"]').text();
-  const match = reviewsText.match(/\((\d+)\)/);
-  const reviewsCount = match ? match[1] : '0';
+  // Rating avg and reviews count from "(⭐) (count)" pattern
+  const parentText = $('h1').parent().text();
+  const match = parentText.match(/\((\d+)\)\s*\((\d+)\)/);
+  let ratingAvg = 0;
+  let reviewsCount = 0;
+  if (match) {
+    ratingAvg = parseInt(match[1], 10) / 10;
+    reviewsCount = parseInt(match[2], 10);
+  }
+
+  // Featured review
+  const featured = $('blockquote').first();
+  const featuredHtml = featured.length ? featured.html() : null;
+  const featuredAuthor = featured.length ? featured.next().text().trim() : null;
 
   return {
-    props: { proj, purchases, reviewsCount },
+    props: { proj, purchases, reviewsCount, ratingAvg, featuredHtml, featuredAuthor },
   };
 }
