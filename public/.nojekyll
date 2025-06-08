@@ -1,0 +1,4 @@
+# from your project root
+touch public/.nojekyll
+git add public/.nojekyll
+git commit -m "Disable Jekyll so _next assets are served"
