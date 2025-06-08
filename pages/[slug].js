@@ -3,15 +3,14 @@
 import Link from 'next/link';
 import { projects } from '../projects/projectsData';
 import { Star, StarHalf, StarOff } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
-export default function ProjectDetail({
-  proj,
-  purchases,
-  reviewsCount,
-  ratingAvg,
-  featuredHtml,
-  featuredAuthor
-}) {
+export default function ProjectDetail({ proj, purchases: initialPurchases, reviewsCount: initialReviewsCount, ratingAvg: initialRatingAvg, featuredHtml, featuredAuthor }) {
+  // Support client‐side updates if desired
+  const [purchases] = useState(initialPurchases);
+  const [reviewsCount] = useState(initialReviewsCount);
+  const [ratingAvg] = useState(initialRatingAvg);
+
   return (
     <div className="min-h-screen bg-background text-text">
       <div className="max-w-4xl mx-auto p-6 space-y-6">
@@ -24,7 +23,11 @@ export default function ProjectDetail({
         <header className="bg-header rounded-md p-4 space-y-1">
           <h1 className="text-3xl font-bold text-primary">{proj.title}</h1>
           <p className="text-muted">
-            {new Date(proj.date).toLocaleDateString()}
+            {new Date(proj.date).toLocaleDateString(undefined, {
+              year: 'numeric',
+              month: 'short',
+              day: 'numeric',
+            })}
           </p>
         </header>
 
@@ -34,12 +37,8 @@ export default function ProjectDetail({
           <div className="flex items-center space-x-1">
             {Array.from({ length: 5 }).map((_, i) => {
               const idx = i + 1;
-              if (ratingAvg >= idx) {
-                return <Star key={i} className="w-5 h-5 text-gold" />;
-              }
-              if (ratingAvg >= idx - 0.5) {
-                return <StarHalf key={i} className="w-5 h-5 text-gold" />;
-              }
+              if (ratingAvg >= idx) return <Star key={i} className="w-5 h-5 text-gold" />;
+              if (ratingAvg >= idx - 0.5) return <StarHalf key={i} className="w-5 h-5 text-gold" />;
               return <StarOff key={i} className="w-5 h-5 text-disabled" />;
             })}
             <span className="text-muted text-sm">({reviewsCount} reviews)</span>
@@ -47,12 +46,7 @@ export default function ProjectDetail({
 
           {/* Purchases */}
           <span className="flex items-center space-x-1 text-muted">
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-5 h-5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
               <path
                 fillRule="evenodd"
                 d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11V5a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0V9h2a1 1 0 100-2h-2z"
@@ -66,16 +60,9 @@ export default function ProjectDetail({
         {/* Featured Review */}
         {featuredHtml && (
           <section className="bg-header rounded-md p-4 space-y-2">
-            <h2 className="text-xl font-semibold text-primary">
-              Featured Review
-            </h2>
-            <div
-              className="prose prose-invert"
-              dangerouslySetInnerHTML={{ __html: featuredHtml }}
-            />
-            {featuredAuthor && (
-              <p className="text-muted text-sm">— {featuredAuthor}</p>
-            )}
+            <h2 className="text-xl font-semibold text-primary">Featured Review</h2>
+            <div className="prose prose-invert" dangerouslySetInnerHTML={{ __html: featuredHtml }} />
+            {featuredAuthor && <p className="text-muted text-sm">— {featuredAuthor}</p>}
           </section>
         )}
 
@@ -103,7 +90,7 @@ export default function ProjectDetail({
           ))}
         </div>
 
-        {/* All Reviews Link */}
+        {/* Read Full Reviews on GmodStore */}
         <div className="pt-6 border-t border-header">
           <a
             href={`${proj.gmodstoreUrl}#reviews`}
@@ -128,28 +115,25 @@ export async function getStaticPaths() {
 
 export async function getStaticProps({ params }) {
   const proj = projects.find((p) => p.slug === params.slug);
-  if (!proj) return { notFound: true };
+  if (!proj) {
+    return { notFound: true };
+  }
 
   const cheerio = require('cheerio');
   const response = await fetch(proj.gmodstoreUrl);
   const html = await response.text();
   const $ = cheerio.load(html);
 
-  // Purchases
+  // Extract purchases
   let purchases = $('*')
-    .filter((i, el) =>
-      $(el)
-        .text()
-        .trim()
-        .startsWith('Purchases:')
-    )
+    .filter((i, el) => $(el).text().trim().startsWith('Purchases:'))
     .text()
     .replace('Purchases:', '')
     .trim();
 
-  // Rating avg and reviews count from "(⭐) (count)" pattern
-  const parentText = $('h1').parent().text();
-  const match = parentText.match(/\((\d+)\)\s*\((\d+)\)/);
+  // Extract rating average and review count from "(50) (5)" pattern
+  const headerText = $('h1').parent().text();
+  const match = headerText.match(/\((\d+)\)\s*\((\d+)\)/);
   let ratingAvg = 0;
   let reviewsCount = 0;
   if (match) {
@@ -157,10 +141,10 @@ export async function getStaticProps({ params }) {
     reviewsCount = parseInt(match[2], 10);
   }
 
-  // Featured review
-  const featured = $('blockquote').first();
-  const featuredHtml = featured.length ? featured.html() : null;
-  const featuredAuthor = featured.length ? featured.next().text().trim() : null;
+  // Extract featured review (first blockquote)
+  const featuredBlock = $('blockquote').first();
+  const featuredHtml = featuredBlock.length ? featuredBlock.html() : null;
+  const featuredAuthor = featuredBlock.length ? featuredBlock.next().text().trim() : null;
 
   return {
     props: { proj, purchases, reviewsCount, ratingAvg, featuredHtml, featuredAuthor },
