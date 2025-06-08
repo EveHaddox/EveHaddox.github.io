@@ -1,0 +1,15 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar to match PIXEL UI */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #383838; /* scroller */
+}
+::-webkit-scrollbar-thumb {
+  background: #B43A3A; /* primary */
+  border-radius: 4px;
+}
